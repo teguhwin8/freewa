@@ -1,0 +1,20 @@
+# apps/api/Dockerfile.dev
+# Development mode with hot-reload
+
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copy package files first for caching layer
+COPY package*.json ./
+
+# Install all dependencies (including devDependencies)
+RUN npm install
+
+# No need to COPY source code as it will be mounted via volume
+# No need to RUN build since we run in dev mode
+
+EXPOSE 3000
+
+# Run in development mode with hot-reload
+CMD ["npm", "run", "start:dev"]

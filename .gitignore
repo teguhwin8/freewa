@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+npm-debug.log
+
+# Build Outputs
+dist/
+.next/
+build/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.DS_Store
+
+# FreeWA Specifics (DO NOT UPLOAD WA SESSIONS!)
+wa_sessions/
+postgres_data/
+redis_data/

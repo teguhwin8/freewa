@@ -1,0 +1,18 @@
+export type DeviceStatus = 'disconnected' | 'connecting' | 'scan_qr' | 'connected';
+
+export interface Device {
+    id: string;
+    name: string;
+    status: DeviceStatus;
+    phoneNumber?: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface CreateDeviceDto {
+    name: string;
+}
+
+export interface DeviceWithQr extends Device {
+    qrCode?: string | null;
+}

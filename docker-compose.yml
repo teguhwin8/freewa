@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+  # 1. DATABASE (Postgres)
+  postgres:
+    image: postgres:15-alpine
+    container_name: freewa_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: freewa
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  # 2. REDIS (Queue)
+  redis:
+    image: redis:alpine
+    container_name: freewa_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  # 3. BACKEND (NestJS API)
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: freewa_api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      # Redis config inside container (host is not localhost, but service name 'redis')
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      WEBHOOK_URL: "https://n8n.teguhcoding.com/webhook/f04b43af-b9d3-410a-905b-56d0c0ad17eb"
+      API_KEY: "your_api_key"
+    volumes:
+      # Mount WA session folder so login persists when container restarts
+      - ./wa_sessions:/app/wa_sessions
+    restart: always
+
+  # 4. FRONTEND (Next.js Dashboard)
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: freewa_web
+    ports:
+      - "3001:3000" # Map port 3001 on host to 3000 in container
+    depends_on:
+      - api
+    environment:
+      # Since this is a Client Component, it accesses API via browser user (localhost)
+      NEXT_PUBLIC_API_URL: http://localhost:3000
+    restart: always
+
+volumes:
+  postgres_data:
+  redis_data:
