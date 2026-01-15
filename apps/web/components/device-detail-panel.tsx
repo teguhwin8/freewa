@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +11,7 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { WebhookDialog } from '@/components/webhook-dialog';
 import {
     Smartphone,
     CheckCircle2,
@@ -19,7 +21,7 @@ import {
     Unplug,
     Trash2,
     Copy,
-    MoreVertical,
+    Webhook,
 } from 'lucide-react';
 
 interface Device {
@@ -28,6 +30,7 @@ interface Device {
     status: 'disconnected' | 'connecting' | 'scan_qr' | 'connected';
     phoneNumber?: string;
     qrCode?: string | null;
+    webhookUrl?: string | null;
 }
 
 interface DeviceDetailPanelProps {
@@ -35,6 +38,7 @@ interface DeviceDetailPanelProps {
     onConnect: (deviceId: string) => void;
     onDisconnect: (deviceId: string) => void;
     onDelete: (deviceId: string) => void;
+    onUpdateWebhook: (deviceId: string, webhookUrl: string | null) => Promise<void>;
 }
 
 export function DeviceDetailPanel({
@@ -42,7 +46,10 @@ export function DeviceDetailPanel({
     onConnect,
     onDisconnect,
     onDelete,
+    onUpdateWebhook,
 }: DeviceDetailPanelProps) {
+    const [isWebhookDialogOpen, setIsWebhookDialogOpen] = useState(false);
+
     const copyDeviceId = () => {
         if (device) {
             navigator.clipboard.writeText(device.id);
@@ -181,7 +188,8 @@ export function DeviceDetailPanel({
             </div>
 
             {/* Footer */}
-            <div className="border-t border-border px-6 py-4 bg-card">
+            <div className="border-t border-border px-6 py-4 bg-card space-y-4">
+                {/* Device ID */}
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-xs text-muted-foreground mb-1">Device ID</p>
@@ -200,7 +208,46 @@ export function DeviceDetailPanel({
                         </Tooltip>
                     </TooltipProvider>
                 </div>
+
+                <Separator />
+
+                {/* Webhook Configuration */}
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-muted-foreground">Webhook URL</p>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsWebhookDialogOpen(true)}
+                            className="h-7 text-xs"
+                        >
+                            <Webhook className="size-3 mr-1" />
+                            {device.webhookUrl ? 'Edit' : 'Configure'}
+                        </Button>
+                    </div>
+                    {device.webhookUrl ? (
+                        <code className="text-xs text-muted-foreground font-mono block truncate">
+                            {device.webhookUrl}
+                        </code>
+                    ) : (
+                        <p className="text-xs text-muted-foreground italic">
+                            Using global webhook (if configured)
+                        </p>
+                    )}
+                </div>
             </div>
+
+            {/* Webhook Dialog */}
+            {device && (
+                <WebhookDialog
+                    open={isWebhookDialogOpen}
+                    onOpenChange={setIsWebhookDialogOpen}
+                    deviceId={device.id}
+                    deviceName={device.name}
+                    currentWebhook={device.webhookUrl}
+                    onSave={(webhookUrl) => onUpdateWebhook(device.id, webhookUrl)}
+                />
+            )}
         </div>
     );
 }

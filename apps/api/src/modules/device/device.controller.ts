@@ -2,6 +2,7 @@ import {
     Controller,
     Get,
     Post,
+    Patch,
     Delete,
     Param,
     Body,
@@ -15,6 +16,7 @@ import type { DeviceWithQr } from './device.interface';
 
 class CreateDeviceDto {
     name: string;
+    webhookUrl?: string | null;
 }
 
 @ApiTags('Device')
@@ -85,6 +87,17 @@ export class DeviceController {
         return {
             success: true,
             message: 'Device disconnected',
+        };
+    }
+
+    @Patch(':id/webhook')
+    @ApiOperation({ summary: 'Update device webhook URL' })
+    updateWebhook(@Param('id') id: string, @Body() body: { webhookUrl: string | null }) {
+        const device = this.deviceService.updateWebhook(id, body.webhookUrl);
+        return {
+            success: true,
+            data: device,
+            message: 'Webhook URL updated',
         };
     }
 

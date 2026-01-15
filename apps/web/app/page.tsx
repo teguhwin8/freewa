@@ -12,6 +12,7 @@ interface Device {
   status: 'disconnected' | 'connecting' | 'scan_qr' | 'connected';
   phoneNumber?: string;
   qrCode?: string | null;
+  webhookUrl?: string | null;
 }
 
 export default function Home() {
@@ -149,6 +150,23 @@ export default function Home() {
     }
   };
 
+  const handleUpdateWebhook = async (deviceId: string, webhookUrl: string | null) => {
+    try {
+      await fetch(`${API_URL}/device/${deviceId}/webhook`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY,
+        },
+        body: JSON.stringify({ webhookUrl }),
+      });
+      await fetchDevices();
+    } catch (error) {
+      console.error('Failed to update webhook:', error);
+      throw error;
+    }
+  };
+
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId) || null;
 
   return (
@@ -168,6 +186,7 @@ export default function Home() {
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}
         onDelete={handleDelete}
+        onUpdateWebhook={handleUpdateWebhook}
       />
     </LayoutShell>
   );

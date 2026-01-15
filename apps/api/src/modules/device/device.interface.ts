@@ -5,12 +5,14 @@ export interface Device {
     name: string;
     status: DeviceStatus;
     phoneNumber?: string;
+    webhookUrl?: string | null;
     createdAt: Date;
     updatedAt: Date;
 }
 
 export interface CreateDeviceDto {
     name: string;
+    webhookUrl?: string | null;
 }
 
 export interface DeviceWithQr extends Device {

@@ -14,7 +14,7 @@ import {
     SheetTitle,
     SheetTrigger,
 } from '@/components/ui/sheet';
-import { Rocket, Plus, Search, Loader2, BarChart3 } from 'lucide-react';
+import { Rocket, Plus, Search, Loader2, BarChart3, Book } from 'lucide-react';
 import Link from 'next/link';
 
 interface Device {
@@ -59,13 +59,17 @@ export function DeviceSidebar({
 
     return (
         <>
-            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 bg-muted/30">
                 <div className="flex items-center gap-2">
                     <Rocket className="size-6 text-primary" />
                     <span className="font-bold text-lg">FreeWA</span>
                 </div>
                 <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" asChild>
+                        <Link href="/docs">
+                            <Book className="size-5" />
+                        </Link>
+                    </Button>
                     <Button variant="ghost" size="icon" asChild>
                         <Link href="/queue">
                             <BarChart3 className="size-5" />

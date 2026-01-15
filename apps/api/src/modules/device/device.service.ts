@@ -47,12 +47,23 @@ export class DeviceService {
             id: uuidv4(),
             name: dto.name,
             status: 'disconnected',
+            webhookUrl: dto.webhookUrl || null,
             createdAt: new Date(),
             updatedAt: new Date(),
         };
         this.devices.set(device.id, device);
         this.saveDevices();
         console.log(`📱 Device created: ${device.name} (${device.id})`);
+        return device;
+    }
+
+    updateWebhook(id: string, webhookUrl: string | null): Device {
+        const device = this.findOne(id);
+        device.webhookUrl = webhookUrl;
+        device.updatedAt = new Date();
+        this.devices.set(id, device);
+        this.saveDevices();
+        console.log(`📱 Webhook updated for device ${id}: ${webhookUrl || 'null'}`);
         return device;
     }
 

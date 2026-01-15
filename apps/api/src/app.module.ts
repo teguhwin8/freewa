@@ -6,6 +6,7 @@ import { MessageModule } from './modules/message/message.module';
 import { EventsModule } from './modules/events/events.module';
 import { DeviceModule } from './modules/device/device.module';
 import { QueueModule } from './modules/queue/queue.module';
+import { ApiKeyModule } from './modules/api-key/api-key.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { QueueModule } from './modules/queue/queue.module';
     EventsModule,
     DeviceModule,
     QueueModule,
+    ApiKeyModule,
   ],
   providers: [],
 })

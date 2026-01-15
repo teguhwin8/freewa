@@ -69,7 +69,9 @@ export class WhatsappService {
           if (!msg.key.fromMe) {
             console.log(`📩 [${deviceId}] Incoming message:`, msg);
 
-            const webhookUrl = process.env.WEBHOOK_URL;
+            // Get device-specific webhook URL or fallback to global WEBHOOK_URL
+            const device = this.deviceService.findOne(deviceId);
+            const webhookUrl = device.webhookUrl || process.env.WEBHOOK_URL;
 
             if (webhookUrl) {
               try {
