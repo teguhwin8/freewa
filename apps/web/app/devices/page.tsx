@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { WebhookDialog } from '@/components/webhook-dialog';
 import {
     Smartphone,
     ArrowLeft,
@@ -18,8 +20,9 @@ import {
     PhoneOff,
     Link2,
     Unplug,
+    Webhook,
 } from 'lucide-react';
-import { fetchDevices as fetchDevicesAction, createDevice as createDeviceAction, connectDevice as connectDeviceAction, disconnectDevice as disconnectDeviceAction, deleteDevice as deleteDeviceAction } from '@/app/actions/devices';
+import { fetchDevices as fetchDevicesAction, createDevice as createDeviceAction, connectDevice as connectDeviceAction, disconnectDevice as disconnectDeviceAction, deleteDevice as deleteDeviceAction, updateWebhook as updateWebhookAction } from '@/app/actions/devices';
 
 interface Device {
     id: string;
@@ -27,6 +30,7 @@ interface Device {
     status: 'disconnected' | 'connecting' | 'scan_qr' | 'connected';
     phoneNumber?: string;
     qrCode?: string | null;
+    webhookUrl?: string | null;
 }
 
 export default function DevicesPage() {
@@ -35,6 +39,7 @@ export default function DevicesPage() {
     const [newDeviceName, setNewDeviceName] = useState('');
     const [loading, setLoading] = useState(false);
     const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+    const [isWebhookDialogOpen, setIsWebhookDialogOpen] = useState(false);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -126,6 +131,11 @@ export default function DevicesPage() {
         if (!confirm('Are you sure you want to delete this device?')) return;
         await deleteDeviceAction(deviceId);
         setSelectedDevice(null);
+        fetchDevices();
+    };
+
+    const handleUpdateWebhook = async (deviceId: string, webhookUrl: string | null) => {
+        await updateWebhookAction(deviceId, webhookUrl || '');
         fetchDevices();
     };
 
@@ -312,12 +322,52 @@ export default function DevicesPage() {
                                             <Unplug className="size-4 mr-1" /> Disconnect
                                         </Button>
                                     )}
+
+                                    <Separator />
+
+                                    {/* Webhook Configuration */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <p className="text-sm font-medium">Webhook URL</p>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => setIsWebhookDialogOpen(true)}
+                                                className="h-7 text-xs"
+                                            >
+                                                <Webhook className="size-3 mr-1" />
+                                                {currentDevice.webhookUrl ? 'Edit' : 'Configure'}
+                                            </Button>
+                                        </div>
+                                        {currentDevice.webhookUrl ? (
+                                            <code className="text-xs text-muted-foreground font-mono block truncate">
+                                                {currentDevice.webhookUrl}
+                                            </code>
+                                        ) : (
+                                            <p className="text-xs text-muted-foreground italic">
+                                                Using global webhook (if configured)
+                                            </p>
+                                        )}
+                                    </div>
                                 </CardContent>
                             </>
                         )}
                     </Card>
                 </div>
             </div>
+
+            {/* Webhook Dialog */}
+            {currentDevice && (
+                <WebhookDialog
+                    open={isWebhookDialogOpen}
+                    onOpenChange={setIsWebhookDialogOpen}
+                    deviceId={currentDevice.id}
+                    deviceName={currentDevice.name}
+                    currentWebhook={currentDevice.webhookUrl}
+                    onSave={(webhookUrl) => handleUpdateWebhook(currentDevice.id, webhookUrl)}
+                />
+            )}
         </main>
     );
 }
+
