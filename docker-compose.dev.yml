@@ -3,7 +3,7 @@ version: "3.8"
 services:
   # 1. DATABASE (Postgres)
   postgres:
-    image: postgres:15-alpine
+    image: postgres:18-alpine
     container_name: freewa_db
     ports:
       - "5432:5432"
@@ -39,6 +39,11 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: freewa
       WEBHOOK_URL: "https://n8n.teguhcoding.com/webhook/f04b43af-b9d3-410a-905b-56d0c0ad17eb"
       API_KEY: "your_api_key"
     volumes:

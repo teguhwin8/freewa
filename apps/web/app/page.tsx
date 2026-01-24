@@ -2,192 +2,180 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { LayoutShell } from '@/components/layout-shell';
-import { DeviceSidebar } from '@/components/device-sidebar';
-import { DeviceDetailPanel } from '@/components/device-detail-panel';
+import { MessageSquare } from 'lucide-react';
+import Link from 'next/link';
+import { ChatSidebar } from '@/components/messaging/chat-sidebar';
+import { MessageThread } from '@/components/messaging/message-thread';
+import { fetchDevices as fetchDevicesAction } from './actions/devices';
+import { fetchChats as fetchChatsAction, markChatAsRead as markChatAsReadAction } from './actions/chat';
 
-interface Device {
+export interface Chat {
+  id: string;
+  deviceId: string;
+  chatId: string;
+  name: string | null;
+  lastMessageBody: string | null;
+  lastMessageTimestamp: number | null;
+  unreadCount: number;
+  updatedAt: string;
+}
+
+export interface Message {
+  id: string;
+  deviceId: string;
+  chatId: string;
+  from: string;
+  to: string;
+  body: string;
+  timestamp: number | string;
+  fromMe: boolean;
+  status: string;
+  createdAt: string;
+}
+
+export interface Device {
   id: string;
   name: string;
   status: 'disconnected' | 'connecting' | 'scan_qr' | 'connected';
   phoneNumber?: string;
-  qrCode?: string | null;
-  webhookUrl?: string | null;
 }
 
 export default function Home() {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  const [isAddingDevice, setIsAddingDevice] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [selectedChat, setSelectedChat] = useState<string | null>(null);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-  const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'your_api_key';
 
   const fetchDevices = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_URL}/device`, {
-        headers: { 'x-api-key': API_KEY },
-      });
-      const data = await res.json();
-      if (data.success) {
-        setDevices(data.data);
+    const data = await fetchDevicesAction();
+    if (data.success) {
+      const connectedDevices = data.data.filter((d: Device) => d.status === 'connected');
+      setDevices(connectedDevices);
+
+      if (!selectedDevice && connectedDevices.length > 0) {
+        setSelectedDevice(connectedDevices[0].id);
       }
-    } catch (error) {
-      console.error('Failed to fetch devices:', error);
     }
-  }, [API_URL, API_KEY]);
+  }, [selectedDevice]);
+
+  const fetchChats = useCallback(async () => {
+    if (!selectedDevice) return;
+
+    const data = await fetchChatsAction(selectedDevice);
+    if (data.success) {
+      setChats(data.data);
+    }
+  }, [selectedDevice]);
 
   useEffect(() => {
     const newSocket = io(API_URL);
     setSocket(newSocket);
 
-    newSocket.on('connect', () => {
-      console.log('Connected to WebSocket');
-    });
-
-    newSocket.on('devices:list', () => {
-      fetchDevices();
-    });
-
     return () => {
       newSocket.disconnect();
     };
-  }, [API_URL, fetchDevices]);
+  }, [API_URL]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !selectedDevice) return;
 
-    devices.forEach((device) => {
-      socket.on(`device:${device.id}:status`, (status: string) => {
-        setDevices((prev) =>
-          prev.map((d) =>
-            d.id === device.id ? { ...d, status: status as Device['status'] } : d
-          )
-        );
-      });
+    socket.on(`device:${selectedDevice}:message:new`, (message: Message) => {
+      fetchChats();
+    });
 
-      socket.on(`device:${device.id}:qr`, (qr: string | null) => {
-        setDevices((prev) =>
-          prev.map((d) => (d.id === device.id ? { ...d, qrCode: qr } : d))
-        );
+    socket.on(`device:${selectedDevice}:chat:update`, (chat: Chat) => {
+      setChats((prev) => {
+        const existing = prev.find((c) => c.chatId === chat.chatId);
+        if (existing) {
+          return prev.map((c) => (c.chatId === chat.chatId ? chat : c));
+        }
+        return [chat, ...prev];
       });
     });
 
     return () => {
-      devices.forEach((device) => {
-        socket.off(`device:${device.id}:status`);
-        socket.off(`device:${device.id}:qr`);
-      });
+      socket.off(`device:${selectedDevice}:message:new`);
+      socket.off(`device:${selectedDevice}:chat:update`);
     };
-  }, [socket, devices]);
+  }, [socket, selectedDevice, fetchChats]);
 
   useEffect(() => {
     fetchDevices();
   }, [fetchDevices]);
 
-  const handleAddDevice = async (name: string) => {
-    setIsAddingDevice(true);
-    try {
-      const res = await fetch(`${API_URL}/device`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': API_KEY,
-        },
-        body: JSON.stringify({ name }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchDevices();
-        // Auto-select the new device
-        setSelectedDeviceId(data.data.id);
+  useEffect(() => {
+    fetchChats();
+  }, [fetchChats]);
+
+  const handleDeviceChange = (deviceId: string) => {
+    setSelectedDevice(deviceId);
+    setSelectedChat(null);
+    setChats([]);
+  };
+
+  const handleSelectChat = async (chatId: string) => {
+    setSelectedChat(chatId);
+
+    // Mark chat as read locally for instant UI feedback
+    setChats((prev) =>
+      prev.map((chat) =>
+        chat.chatId === chatId ? { ...chat, unreadCount: 0 } : chat
+      )
+    );
+
+    // Mark chat as read in database for persistence
+    if (selectedDevice) {
+      try {
+        await markChatAsReadAction(selectedDevice, chatId);
+
+      } catch (error) {
+        console.error('Failed to mark chat as read:', error);
       }
-    } catch (error) {
-      console.error('Failed to create device:', error);
-    } finally {
-      setIsAddingDevice(false);
     }
   };
 
-  const handleConnect = async (deviceId: string) => {
-    try {
-      await fetch(`${API_URL}/device/${deviceId}/connect`, {
-        method: 'POST',
-        headers: { 'x-api-key': API_KEY },
-      });
-      fetchDevices();
-    } catch (error) {
-      console.error('Failed to connect device:', error);
-    }
-  };
-
-  const handleDisconnect = async (deviceId: string) => {
-    try {
-      await fetch(`${API_URL}/device/${deviceId}/disconnect`, {
-        method: 'POST',
-        headers: { 'x-api-key': API_KEY },
-      });
-      fetchDevices();
-    } catch (error) {
-      console.error('Failed to disconnect device:', error);
-    }
-  };
-
-  const handleDelete = async (deviceId: string) => {
-    if (!confirm('Are you sure you want to delete this device?')) return;
-    try {
-      await fetch(`${API_URL}/device/${deviceId}`, {
-        method: 'DELETE',
-        headers: { 'x-api-key': API_KEY },
-      });
-      if (selectedDeviceId === deviceId) {
-        setSelectedDeviceId(null);
-      }
-      fetchDevices();
-    } catch (error) {
-      console.error('Failed to delete device:', error);
-    }
-  };
-
-  const handleUpdateWebhook = async (deviceId: string, webhookUrl: string | null) => {
-    try {
-      await fetch(`${API_URL}/device/${deviceId}/webhook`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': API_KEY,
-        },
-        body: JSON.stringify({ webhookUrl }),
-      });
-      await fetchDevices();
-    } catch (error) {
-      console.error('Failed to update webhook:', error);
-      throw error;
-    }
-  };
-
-  const selectedDevice = devices.find((d) => d.id === selectedDeviceId) || null;
+  if (devices.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md px-4">
+          <div className="size-24 mx-auto mb-6 rounded-full bg-green-50 flex items-center justify-center">
+            <MessageSquare className="size-12 text-green-500" />
+          </div>
+          <h2 className="text-2xl font-bold mb-3 text-gray-900">No Connected Devices</h2>
+          <p className="text-gray-600 mb-6">
+            Please connect a WhatsApp device first to start messaging
+          </p>
+          <Link
+            href="/devices"
+            className="inline-flex items-center justify-center rounded-lg text-sm font-medium px-6 py-3 bg-green-500 text-white hover:bg-green-600 transition-colors"
+          >
+            Go to Device Manager
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <LayoutShell
-      sidebar={
-        <DeviceSidebar
-          devices={devices}
-          selectedDeviceId={selectedDeviceId}
-          onSelectDevice={setSelectedDeviceId}
-          onAddDevice={handleAddDevice}
-          isAddingDevice={isAddingDevice}
-        />
-      }
-    >
-      <DeviceDetailPanel
-        device={selectedDevice}
-        onConnect={handleConnect}
-        onDisconnect={handleDisconnect}
-        onDelete={handleDelete}
-        onUpdateWebhook={handleUpdateWebhook}
+    <div className="flex h-full bg-gray-100">
+      <ChatSidebar
+        devices={devices}
+        selectedDevice={selectedDevice}
+        onSelectDevice={handleDeviceChange}
+        chats={chats}
+        selectedChat={selectedChat}
+        onSelectChat={handleSelectChat}
+        onRefreshChats={fetchChats}
       />
-    </LayoutShell>
+      <MessageThread
+        deviceId={selectedDevice}
+        chatId={selectedChat}
+        socket={socket}
+        onSendMessage={fetchChats}
+      />
+    </div>
   );
 }

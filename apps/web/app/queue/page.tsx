@@ -15,6 +15,8 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { BarChart3, ArrowLeft, RotateCcw, Trash2 } from 'lucide-react';
+import { formatTime } from '@/lib/utils/format';
+import { fetchQueueStats as fetchQueueStatsAction, fetchQueueJobs as fetchQueueJobsAction, retryQueueJob as retryQueueJobAction, removeQueueJob as removeQueueJobAction } from '@/app/actions/queue';
 
 interface QueueStats {
     waiting: number;
@@ -50,68 +52,35 @@ export default function QueuePage() {
     const [loading, setLoading] = useState(false);
     const [autoRefresh, setAutoRefresh] = useState(true);
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'your_api_key';
-
     const fetchStats = useCallback(async () => {
-        try {
-            const res = await fetch(`${API_URL}/queue/stats`, {
-                headers: { 'x-api-key': API_KEY },
-            });
-            const data = await res.json();
-            if (data.success) {
-                setStats(data.data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch stats:', error);
+        const data = await fetchQueueStatsAction();
+        if (data.success) {
+            setStats(data.data);
         }
-    }, [API_URL, API_KEY]);
+    }, []);
 
     const fetchJobs = useCallback(async () => {
-        try {
-            const res = await fetch(`${API_URL}/queue/jobs?status=${selectedStatus}`, {
-                headers: { 'x-api-key': API_KEY },
-            });
-            const data = await res.json();
-            if (data.success) {
-                setJobs(data.data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch jobs:', error);
+        const data = await fetchQueueJobsAction(selectedStatus);
+        if (data.success) {
+            setJobs(data.data);
         }
-    }, [API_URL, API_KEY, selectedStatus]);
+    }, [selectedStatus]);
 
     const retryJob = async (jobId: string) => {
         setLoading(true);
-        try {
-            await fetch(`${API_URL}/queue/jobs/${jobId}/retry`, {
-                method: 'POST',
-                headers: { 'x-api-key': API_KEY },
-            });
-            fetchStats();
-            fetchJobs();
-        } catch (error) {
-            console.error('Failed to retry job:', error);
-        } finally {
-            setLoading(false);
-        }
+        await retryQueueJobAction(jobId);
+        fetchStats();
+        fetchJobs();
+        setLoading(false);
     };
 
     const removeJob = async (jobId: string) => {
         if (!confirm('Are you sure you want to remove this job?')) return;
         setLoading(true);
-        try {
-            await fetch(`${API_URL}/queue/jobs/${jobId}`, {
-                method: 'DELETE',
-                headers: { 'x-api-key': API_KEY },
-            });
-            fetchStats();
-            fetchJobs();
-        } catch (error) {
-            console.error('Failed to remove job:', error);
-        } finally {
-            setLoading(false);
-        }
+        await removeQueueJobAction(jobId);
+        fetchStats();
+        fetchJobs();
+        setLoading(false);
     };
 
     useEffect(() => {
@@ -127,10 +96,6 @@ export default function QueuePage() {
         }, 5000);
         return () => clearInterval(interval);
     }, [autoRefresh, fetchStats, fetchJobs]);
-
-    const formatTime = (timestamp: number) => {
-        return new Date(timestamp).toLocaleString();
-    };
 
     const statuses: { key: JobStatus; label: string }[] = [
         { key: 'waiting', label: 'Waiting' },
@@ -176,8 +141,8 @@ export default function QueuePage() {
                         <Card
                             key={key}
                             className={`cursor-pointer transition ${selectedStatus === key
-                                    ? 'border-primary ring-2 ring-primary/20'
-                                    : 'border-border hover:border-muted-foreground'
+                                ? 'border-primary ring-2 ring-primary/20'
+                                : 'border-border hover:border-muted-foreground'
                                 }`}
                             onClick={() => setSelectedStatus(key)}
                         >

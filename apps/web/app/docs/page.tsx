@@ -266,29 +266,27 @@ export default function DocsPage() {
     };
 
     return (
-        <div className="h-screen flex flex-col bg-muted/20">
-            {/* Header */}
-            <div className="border-b border-border bg-card px-6 py-4">
-                <div className="flex items-center justify-between max-w-5xl mx-auto">
+        <main className="w-full h-full bg-gray-50 overflow-auto">
+            <div className="max-w-7xl mx-auto p-6">
+                {/* Header */}
+                <div className="bg-white border rounded-lg px-6 py-4 mb-6">
                     <div className="flex items-center gap-3">
-                        <div className="size-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                            <Book className="size-6 text-primary" />
+                        <div className="size-10 rounded-lg bg-green-50 flex items-center justify-center">
+                            <Book className="size-6 text-green-500" />
                         </div>
                         <div>
-                            <h1 className="text-2xl font-bold">API Documentation</h1>
-                            <p className="text-sm text-muted-foreground">
+                            <h1 className="text-2xl font-bold text-gray-900">API Documentation</h1>
+                            <p className="text-sm text-gray-600">
                                 Interactive documentation for FreeWA API
                             </p>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto">
-                <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+                {/* Content */}
+                <div className="space-y-6">
                     {/* API Key Section */}
-                    <div className="bg-card border border-border rounded-lg p-6">
+                    <div className="bg-white border rounded-lg p-6">
                         <div className="flex items-center gap-2 mb-4">
                             <Key className="size-5" />
                             <h2 className="text-lg font-semibold">API Key</h2>
@@ -319,10 +317,10 @@ export default function DocsPage() {
 
                     {/* Endpoint Groups */}
                     {endpoints.map((group) => (
-                        <div key={group.title} className="bg-card border border-border rounded-lg overflow-hidden">
+                        <div key={group.title} className="bg-white border rounded-lg overflow-hidden">
                             <button
                                 onClick={() => toggleGroup(group.title)}
-                                className="w-full px-6 py-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
+                                className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
                             >
                                 <h3 className="text-lg font-semibold">{group.title}</h3>
                                 {expandedGroups.has(group.title) ? (
@@ -413,6 +411,6 @@ export default function DocsPage() {
                     ))}
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

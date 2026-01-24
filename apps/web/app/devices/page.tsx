@@ -19,6 +19,7 @@ import {
     Link2,
     Unplug,
 } from 'lucide-react';
+import { fetchDevices as fetchDevicesAction, createDevice as createDeviceAction, connectDevice as connectDeviceAction, disconnectDevice as disconnectDeviceAction, deleteDevice as deleteDeviceAction } from '@/app/actions/devices';
 
 interface Device {
     id: string;
@@ -36,21 +37,13 @@ export default function DevicesPage() {
     const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
 
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'your_api_key';
 
     const fetchDevices = useCallback(async () => {
-        try {
-            const res = await fetch(`${API_URL}/device`, {
-                headers: { 'x-api-key': API_KEY },
-            });
-            const data = await res.json();
-            if (data.success) {
-                setDevices(data.data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch devices:', error);
+        const data = await fetchDevicesAction();
+        if (data.success) {
+            setDevices(data.data);
         }
-    }, [API_URL, API_KEY]);
+    }, []);
 
     useEffect(() => {
         const newSocket = io(API_URL);
@@ -86,12 +79,19 @@ export default function DevicesPage() {
                     prev.map((d) => (d.id === device.id ? { ...d, qrCode: qr } : d))
                 );
             });
+
+            socket.on(`device:${device.id}:phoneNumber`, (phoneNumber: string) => {
+                setDevices((prev) =>
+                    prev.map((d) => (d.id === device.id ? { ...d, phoneNumber } : d))
+                );
+            });
         });
 
         return () => {
             devices.forEach((device) => {
                 socket.off(`device:${device.id}:status`);
                 socket.off(`device:${device.id}:qr`);
+                socket.off(`device:${device.id}:phoneNumber`);
             });
         };
     }, [socket, devices]);
@@ -103,64 +103,30 @@ export default function DevicesPage() {
     const createDevice = async () => {
         if (!newDeviceName.trim()) return;
         setLoading(true);
-        try {
-            const res = await fetch(`${API_URL}/device`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'x-api-key': API_KEY,
-                },
-                body: JSON.stringify({ name: newDeviceName }),
-            });
-            const data = await res.json();
-            if (data.success) {
-                setNewDeviceName('');
-                fetchDevices();
-            }
-        } catch (error) {
-            console.error('Failed to create device:', error);
-        } finally {
-            setLoading(false);
+        const data = await createDeviceAction(newDeviceName);
+        if (data.success) {
+            setNewDeviceName('');
+            fetchDevices();
         }
+        setLoading(false);
     };
 
     const connectDevice = async (deviceId: string) => {
         setSelectedDevice(deviceId);
-        try {
-            await fetch(`${API_URL}/device/${deviceId}/connect`, {
-                method: 'POST',
-                headers: { 'x-api-key': API_KEY },
-            });
-            fetchDevices();
-        } catch (error) {
-            console.error('Failed to connect device:', error);
-        }
+        await connectDeviceAction(deviceId);
+        fetchDevices();
     };
 
     const disconnectDevice = async (deviceId: string) => {
-        try {
-            await fetch(`${API_URL}/device/${deviceId}/disconnect`, {
-                method: 'POST',
-                headers: { 'x-api-key': API_KEY },
-            });
-            fetchDevices();
-        } catch (error) {
-            console.error('Failed to disconnect device:', error);
-        }
+        await disconnectDeviceAction(deviceId);
+        fetchDevices();
     };
 
     const deleteDevice = async (deviceId: string) => {
         if (!confirm('Are you sure you want to delete this device?')) return;
-        try {
-            await fetch(`${API_URL}/device/${deviceId}`, {
-                method: 'DELETE',
-                headers: { 'x-api-key': API_KEY },
-            });
-            setSelectedDevice(null);
-            fetchDevices();
-        } catch (error) {
-            console.error('Failed to delete device:', error);
-        }
+        await deleteDeviceAction(deviceId);
+        setSelectedDevice(null);
+        fetchDevices();
     };
 
     const getStatusBadge = (status: Device['status']) => {
@@ -180,14 +146,14 @@ export default function DevicesPage() {
 
     return (
         <main className="min-h-screen p-8">
-            <div className="max-w-6xl mx-auto">
+            <div className="max-w-7xl mx-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-8">
                     <div>
                         <h1 className="text-3xl font-bold flex items-center gap-2">
                             <Smartphone className="size-8" /> Device Manager
                         </h1>
-                        <p className="text-muted-foreground mt-1">Manage multiple WhatsApp devices</p>
+                        <p className="text-muted-foreground mt-1">Manage your WhatsApp accounts</p>
                     </div>
                     <Button asChild variant="outline">
                         <Link href="/" className="flex items-center gap-2">
@@ -196,20 +162,22 @@ export default function DevicesPage() {
                     </Button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Main Content */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Left: Device List */}
-                    <div className="space-y-6">
-                        {/* Add Device Form */}
+                    <div className="space-y-4">
+                        {/* Add Device */}
                         <Card>
                             <CardHeader>
                                 <CardTitle>Add New Device</CardTitle>
+                                <CardDescription>Create a new WhatsApp API instance</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="flex gap-3">
+                                <div className="flex gap-2">
                                     <Input
+                                        placeholder="Device name (e.g., My Business Account)"
                                         value={newDeviceName}
                                         onChange={(e) => setNewDeviceName(e.target.value)}
-                                        placeholder="Device name (e.g. Office Phone)"
                                         onKeyDown={(e) => e.key === 'Enter' && createDevice()}
                                         className="flex-1"
                                     />
@@ -240,8 +208,8 @@ export default function DevicesPage() {
                                                 key={device.id}
                                                 onClick={() => setSelectedDevice(device.id)}
                                                 className={`p-4 rounded-lg border transition cursor-pointer ${selectedDevice === device.id
-                                                        ? 'border-primary bg-primary/10'
-                                                        : 'border-border hover:border-muted-foreground'
+                                                    ? 'border-primary bg-primary/10'
+                                                    : 'border-border hover:border-muted-foreground'
                                                     }`}
                                             >
                                                 <div className="flex items-center justify-between">
@@ -258,9 +226,6 @@ export default function DevicesPage() {
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <span className="text-xs text-muted-foreground font-mono">
-                                                        {device.id.slice(0, 8)}...
-                                                    </span>
                                                 </div>
                                             </div>
                                         ))}
@@ -337,23 +302,16 @@ export default function DevicesPage() {
                                         </div>
                                     )}
 
-                                    {/* Device ID */}
-                                    <div className="border-t border-border pt-4">
-                                        <p className="text-sm text-muted-foreground mb-2">Device ID:</p>
-                                        <code className="block p-3 bg-muted rounded-lg text-xs text-muted-foreground break-all">
-                                            {currentDevice.id}
-                                        </code>
-
-                                        {currentDevice.status === 'connected' && (
-                                            <Button
-                                                variant="outline"
-                                                className="mt-4 w-full"
-                                                onClick={() => disconnectDevice(currentDevice.id)}
-                                            >
-                                                <Unplug className="size-4 mr-1" /> Disconnect
-                                            </Button>
-                                        )}
-                                    </div>
+                                    {/* Connect/Disconnect Actions */}
+                                    {currentDevice.status === 'connected' && (
+                                        <Button
+                                            variant="outline"
+                                            className="w-full"
+                                            onClick={() => disconnectDevice(currentDevice.id)}
+                                        >
+                                            <Unplug className="size-4 mr-1" /> Disconnect
+                                        </Button>
+                                    )}
                                 </CardContent>
                             </>
                         )}

@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, forwardRef, OnModuleInit } from '@nestjs/common';
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
@@ -12,9 +12,10 @@ import { EventsGateway } from '../events/events.gateway';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { DeviceService } from '../device/device.service';
+import { ChatService } from '../chat/chat.service';
 
 @Injectable()
-export class WhatsappService {
+export class WhatsappService implements OnModuleInit {
   private sockets: Map<string, WASocket> = new Map();
   private qrCodes: Map<string, string | null> = new Map();
 
@@ -23,16 +24,77 @@ export class WhatsappService {
     private readonly httpService: HttpService,
     @Inject(forwardRef(() => DeviceService))
     private readonly deviceService: DeviceService,
+    @Inject(forwardRef(() => ChatService))
+    private readonly chatService: ChatService,
   ) { }
 
+  async onModuleInit() {
+    console.log('🔄 Initializing WhatsApp service...');
+    await this.autoConnectDevices();
+  }
+
+  private async autoConnectDevices(): Promise<void> {
+    try {
+      const sessionsPath = path.join(process.cwd(), 'wa_sessions');
+
+      // Check if wa_sessions folder exists
+      if (!fs.existsSync(sessionsPath)) {
+        console.log('📁 No sessions folder found, skipping auto-connect');
+        return;
+      }
+
+      // Get all device folders
+      const deviceFolders = fs.readdirSync(sessionsPath).filter((file) => {
+        const fullPath = path.join(sessionsPath, file);
+        return fs.statSync(fullPath).isDirectory();
+      });
+
+      if (deviceFolders.length === 0) {
+        console.log('📭 No existing sessions found');
+        return;
+      }
+
+      console.log(`🔌 Found ${deviceFolders.length} device session(s), auto-connecting...`);
+
+      // Auto-connect each device
+      for (const deviceId of deviceFolders) {
+        // Check if device exists in database
+        const device = await this.deviceService.findOne(deviceId);
+        if (!device) {
+          console.log(`⚠️  Device ${deviceId} has session but not in database, skipping`);
+          continue;
+        }
+
+        // Check if session has creds.json (means authenticated)
+        const credsPath = path.join(sessionsPath, deviceId, 'creds.json');
+        if (!fs.existsSync(credsPath)) {
+          console.log(`⚠️  Device ${deviceId} has no credentials, skipping`);
+          continue;
+        }
+
+        console.log(`🔌 Auto-connecting device: ${deviceId}`);
+
+        // Use setTimeout to prevent blocking and allow proper initialization
+        setTimeout(() => {
+          this.connectDevice(deviceId).catch((err) => {
+            console.error(`❌ Failed to auto-connect ${deviceId}:`, err.message);
+          });
+        }, 1000 * deviceFolders.indexOf(deviceId)); // Stagger connections
+      }
+    } catch (error) {
+      console.error('❌ Error in auto-connect:', error);
+    }
+  }
+
   private getSessionPath(deviceId: string): string {
-    const sessionPath = path.resolve(
-      __dirname,
-      `../../../../wa_sessions/${deviceId}`,
-    );
+    // Use absolute path from project root
+    const sessionPath = path.join(process.cwd(), 'wa_sessions', deviceId);
+
     if (!fs.existsSync(sessionPath)) {
       fs.mkdirSync(sessionPath, { recursive: true });
     }
+
+    console.log(`📁 Session path for ${deviceId}: ${sessionPath}`);
     return sessionPath;
   }
 
@@ -66,21 +128,54 @@ export class WhatsappService {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
+          // Get device to show phone number in logs
+          const device = this.deviceService.findOne(deviceId);
+          const displayId = device.phoneNumber || deviceId;
+
+          // Extract message text
+          const text =
+            msg.message?.conversation ||
+            msg.message?.extendedTextMessage?.text ||
+            msg.message?.imageMessage?.caption ||
+            '';
+
           if (!msg.key.fromMe) {
-            console.log(`📩 [${deviceId}] Incoming message:`, msg);
+            console.log(`📩 [${displayId}] Incoming message:`, text);
+
+            // Store message in database
+            const chatId = msg.key.remoteJid?.split('@')[0];
+            if (chatId && msg.key.remoteJid && this.chatService) {
+              try {
+                const savedMessage = await this.chatService.addMessage({
+                  deviceId,
+                  chatId,
+                  from: msg.key.remoteJid,
+                  to: `${displayId}@s.whatsapp.net`,
+                  body: text,
+                  timestamp: msg.messageTimestamp ? Number(msg.messageTimestamp) : Date.now(),
+                  fromMe: false,
+                  status: 'received',
+                });
+
+                // Emit to WebSocket for real-time UI update
+                this.eventsGateway.emitDevice(deviceId, 'message:new', savedMessage);
+
+                // Also emit chat update
+                const chat = await this.chatService.getChats(deviceId);
+                const updatedChat = chat.find(c => c.chatId === chatId);
+                if (updatedChat) {
+                  this.eventsGateway.emitDevice(deviceId, 'chat:update', updatedChat);
+                }
+              } catch (error) {
+                console.error(`❌ Failed to store message:`, error);
+              }
+            }
 
             // Get device-specific webhook URL or fallback to global WEBHOOK_URL
-            const device = this.deviceService.findOne(deviceId);
             const webhookUrl = device.webhookUrl || process.env.WEBHOOK_URL;
 
             if (webhookUrl) {
               try {
-                const text =
-                  msg.message?.conversation ||
-                  msg.message?.extendedTextMessage?.text ||
-                  msg.message?.imageMessage?.caption ||
-                  '';
-
                 const payload = {
                   deviceId,
                   from: msg.key.remoteJid,
@@ -94,7 +189,7 @@ export class WhatsappService {
                   this.httpService.post(webhookUrl, payload),
                 );
                 console.log(
-                  `✅ [${deviceId}] Webhook forwarded to ${webhookUrl}`,
+                  `✅ [${displayId}] Webhook forwarded to ${webhookUrl}`,
                 );
               } catch (error) {
                 if (error instanceof Error) {
@@ -103,13 +198,19 @@ export class WhatsappService {
                     error.message,
                   );
                 } else {
-                  console.error(`❌ [${deviceId}] Failed to hit webhook:`, error);
+                  console.error(`❌ [${displayId}] Failed to hit webhook:`, error);
                 }
               }
             }
           }
         }
       })();
+    });
+
+    // CRITICAL: Save credentials whenever they update
+    socket.ev.on('creds.update', async () => {
+      console.log(`💾 Saving credentials for device ${deviceId}`);
+      await saveCreds();
     });
 
     // Handle connection updates
@@ -151,12 +252,23 @@ export class WhatsappService {
         }
 
         if (connection === 'open') {
-          console.log(`\n✅ [${deviceId}] SUCCESSFULLY CONNECTED TO WHATSAPP! 🚀\n`);
+          // Extract phone number from socket.user.id (format: 628xxx@s.whatsapp.net)
+          let phoneNumber: string | undefined;
+          if (socket.user?.id) {
+            phoneNumber = socket.user.id.split('@')[0];
+          }
+
+          console.log(`\n✅ [${phoneNumber || deviceId}] SUCCESSFULLY CONNECTED TO WHATSAPP! 🚀\n`);
 
           this.qrCodes.set(deviceId, null);
-          this.deviceService.updateStatus(deviceId, 'connected');
+          this.deviceService.updateStatus(deviceId, 'connected', phoneNumber);
           this.eventsGateway.emitDevice(deviceId, 'status', 'connected');
           this.eventsGateway.emitDevice(deviceId, 'qr', null);
+
+          // Emit phone number so frontend can display it
+          if (phoneNumber) {
+            this.eventsGateway.emitDevice(deviceId, 'phoneNumber', phoneNumber);
+          }
         }
       },
     );
