@@ -97,3 +97,45 @@ export async function updateWebhook(deviceId: string, webhookUrl: string) {
         return { success: false, error: 'Failed to update webhook' };
     }
 }
+
+export async function testWebhook(webhookUrl: string, deviceId: string, deviceName: string) {
+    try {
+        const testPayload = {
+            event: 'webhook.test',
+            timestamp: new Date().toISOString(),
+            device: {
+                id: deviceId,
+                name: deviceName,
+            },
+            message: 'This is a test webhook from FreeWA. If you receive this, your webhook is configured correctly!',
+        };
+
+        const res = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(testPayload),
+        });
+
+        if (res.ok) {
+            return {
+                success: true,
+                status: res.status,
+                message: 'Webhook test successful! Your endpoint responded correctly.'
+            };
+        } else {
+            return {
+                success: false,
+                status: res.status,
+                error: `Webhook returned status ${res.status}: ${res.statusText}`
+            };
+        }
+    } catch (error) {
+        console.error('Failed to test webhook:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to connect to webhook URL'
+        };
+    }
+}
